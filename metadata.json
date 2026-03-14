@@ -1,0 +1,9 @@
+{
+  "name": "Cygnus ☸️",
+  "description": "Cygnus is a multimodal AI agent built with the Google GenAI SDK. It interprets live screen recordings and audio to proactively assist users with international flight bookings and passport requirements, leveraging Gemini models on Google Cloud.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "display-capture"
+  ]
+}
