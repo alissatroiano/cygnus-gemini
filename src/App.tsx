@@ -28,17 +28,17 @@ const CYGNUS_SYSTEM_INSTRUCTION = `
 You are Cygnus, a real-time UI Navigator. 
 
 1. MONITOR: Watch screen for international flight bookings.
-2. VERIFY: Before alerting, double-check the destination. If you see multiple locations, focus on the one being actively selected or the most prominent "Select" button.
-3. ALERT: Call 'trigger_flight_alert' IMMEDIATELY when destination is confirmed. 
-4. TALK: Say "I noticed you're looking at international flights to [Destination]. Did you know 40% of travel cancellations are caused by passport validity issues?"
-5. RESEARCH: Use 'googleSearch' to find the specific passport validity rules for that country (e.g., "passport validity for Greece").
-6. GUIDE: 
-   - STEP 1: Use 'navigate_to_url' to show them the State Dept site.
-   - STEP 2: Use 'type_text' to point to the search box on THEIR screen.
-   - STEP 3: Use 'click_element' to point to the "Go" button.
-   - STEP 4: Once the page loads, use 'scroll_to_section' and 'highlight_text'.
+2. ALERT: Call 'trigger_flight_alert' when a destination is confirmed.
+3. TALK: Say "I noticed you're looking at international flights to [Destination]. Did you know 40% of travel cancellations are caused by passport validity issues?"
+4. RESEARCH: Use 'googleSearch' to find the specific passport validity rules for that country.
+5. GUIDE (The "Show Me" Workflow):
+   - STEP 1: Use 'navigate_to_url' to "https://travel.state.gov/en/international-travel.html". 
+   - STEP 2: Tell the user: "I've opened the research panel. Please click 'Open Official Site' so I can show you where to look."
+   - STEP 3: Once they have the site open in their browser (you will see it in the Vision view), use 'move_cursor' to point to the "Learn About Your Destination" search box.
+   - STEP 4: Say: "Type your destination here in this dropdown to see the official rules."
+   - STEP 5: Use 'highlight_text' or 'move_cursor' to point to the "Go" button.
 
-CLARIFICATION: You are a companion. You cannot control their browser. You move a VIRTUAL CURSOR on their screen share to GUIDE them. Tell them: "I'll show you where to look on your screen."
+CLARIFICATION: You are a companion. You move a VIRTUAL CURSOR on their screen share to GUIDE them. You cannot click things for them in their browser.
 `;
 
 // --- Components ---
@@ -632,9 +632,9 @@ export default function App() {
                     href={currentUrl} 
                     target="_blank" 
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 px-3 py-1 bg-emerald-600 text-white text-[10px] font-bold rounded-lg hover:bg-emerald-700 transition-all"
+                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-xl hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-900/20 animate-pulse"
                   >
-                    Open Official Site <ExternalLink className="w-3 h-3" />
+                    Open Official Site <ExternalLink className="w-4 h-4" />
                   </a>
                 )}
               </div>
@@ -647,11 +647,18 @@ export default function App() {
                         <Info className="w-4 h-4 text-emerald-600" />
                         <h5 className="text-sm font-bold text-emerald-900">Cygnus Live Guidance</h5>
                       </div>
-                      <p className="text-xs text-emerald-800 leading-relaxed">
+                      <p className="text-xs text-emerald-800 leading-relaxed mb-4">
                         I've opened the State Department requirements for you. Since some government sites restrict viewing inside other apps, 
-                        I recommend clicking the button above to view the full details in a new tab. 
-                        <strong> I will continue to guide you through the requirements here.</strong>
+                        please click the <strong>"Open Official Site"</strong> button above.
                       </p>
+                      <div className="p-3 bg-white rounded-xl border border-emerald-100 flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <ChevronRight className="w-4 h-4 text-emerald-600" />
+                        </div>
+                        <p className="text-[11px] text-emerald-900 font-medium">
+                          Once the site is open, I'll use my cursor to show you the <strong>"Learn About Your Destination"</strong> dropdown.
+                        </p>
+                      </div>
                     </div>
 
                     <div className="prose prose-sm max-w-none">
