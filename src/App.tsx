@@ -320,13 +320,12 @@ export default function App() {
               }
 
               if (responses.length > 0) {
-                sessionPromise.then(session => {
-                  session.sendToolResponse({
-                    functionResponses: responses
-                  });
-                }).catch(err => {
-                  addDebugLog(`Failed to send tool response: ${err}`);
-                });
+                const session = sessionRef.current;
+                if (session) {
+                  session.sendToolResponse({ functionResponses: responses });
+                } else {
+                  sessionPromise.then(s => s.sendToolResponse({ functionResponses: responses }));
+                }
               }
             }
           },
@@ -370,11 +369,12 @@ export default function App() {
     const sendFrame = () => {
       if (!isRecordingRef.current) return;
       if (ctx && video.readyState === video.HAVE_ENOUGH_DATA) {
+        // Use a smaller internal canvas for streaming to reduce data size
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const base64Data = canvas.toDataURL('image/jpeg', 0.3).split(',')[1];
+        const base64Data = canvas.toDataURL('image/jpeg', 0.2).split(',')[1];
         session.sendRealtimeInput({ media: { data: base64Data, mimeType: 'image/jpeg' } });
       }
-      setTimeout(sendFrame, 1000); // Send frame every 1000ms (1fps) for better responsiveness
+      setTimeout(sendFrame, 1000); // 1fps is enough for UI navigation
     };
     sendFrame();
 
@@ -396,8 +396,13 @@ export default function App() {
         pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
       }
       
-      // Convert to Base64
-      const base64Audio = btoa(String.fromCharCode(...new Uint8Array(pcmData.buffer)));
+      // Convert to Base64 efficiently
+      const bytes = new Uint8Array(pcmData.buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      const base64Audio = btoa(binary);
       session.sendRealtimeInput({ media: { data: base64Audio, mimeType: 'audio/pcm;rate=16000' } });
     };
   };
@@ -407,17 +412,17 @@ export default function App() {
     const audioContext = audioContextRef.current;
     
     const binaryString = window.atob(base64Data);
-    const len = binaryString.length;
-    const bytes = new Int16Array(len / 2);
-    for (let i = 0; i < len; i += 2) {
-      bytes[i / 2] = (binaryString.charCodeAt(i + 1) << 8) | binaryString.charCodeAt(i);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
     }
+    const pcmData = new Int16Array(bytes.buffer);
     
     const sampleRate = 24000; // Gemini Live output is 24kHz
-    const audioBuffer = audioContext.createBuffer(1, bytes.length, sampleRate);
+    const audioBuffer = audioContext.createBuffer(1, pcmData.length, sampleRate);
     const channelData = audioBuffer.getChannelData(0);
-    for (let i = 0; i < bytes.length; i++) {
-      channelData[i] = bytes[i] / 32768;
+    for (let i = 0; i < pcmData.length; i++) {
+      channelData[i] = pcmData[i] / 32768;
     }
 
     const source = audioContext.createBufferSource();
@@ -556,7 +561,7 @@ export default function App() {
               muted 
               className="w-full h-full object-cover opacity-80"
             />
-            <canvas ref={canvasRef} width={640} height={360} className="hidden" />
+            <canvas ref={canvasRef} width={480} height={270} className="hidden" />
             
             {/* Virtual Cursor */}
             <AnimatePresence>
