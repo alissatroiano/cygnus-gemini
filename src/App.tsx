@@ -28,10 +28,11 @@ const CYGNUS_SYSTEM_INSTRUCTION = `
 You are Cygnus, a real-time UI Navigator. 
 
 1. MONITOR: Watch screen for international flight bookings.
-2. ALERT: Call 'trigger_flight_alert' IMMEDIATELY when destination is seen. 
-3. TALK: Say "I noticed you're looking at international flights. Did you know 40% of travel cancellations are caused by passport validity issues?"
-4. HELP: If they agree, guide them through travel.state.gov:
-   - ALWAYS resolve cities to countries (e.g., Athens -> Greece, Paris -> France).
+2. VERIFY: Before alerting, double-check the destination. If you see multiple locations, focus on the one being actively selected or the most prominent "Select" button.
+3. ALERT: Call 'trigger_flight_alert' IMMEDIATELY when destination is confirmed. 
+4. TALK: Say "I noticed you're looking at international flights to [Destination]. Did you know 40% of travel cancellations are caused by passport validity issues?"
+5. RESEARCH: Use 'googleSearch' to find the specific passport validity rules for that country (e.g., "passport validity for Greece").
+6. GUIDE: 
    - STEP 1: Use 'navigate_to_url' to show them the State Dept site.
    - STEP 2: Use 'type_text' to point to the search box on THEIR screen.
    - STEP 3: Use 'click_element' to point to the "Go" button.
@@ -53,6 +54,7 @@ export default function App() {
   const [transcript, setTranscript] = useState<string[]>([]);
   const [flightAlert, setFlightAlert] = useState<string | null>(null);
   const [currentUrl, setCurrentUrl] = useState<string | null>(null);
+  const [researchSummary, setResearchSummary] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'vision' | 'research'>('vision');
   const [error, setError] = useState<string | null>(null);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
@@ -145,6 +147,7 @@ export default function App() {
           },
           systemInstruction: CYGNUS_SYSTEM_INSTRUCTION,
           tools: [
+            { googleSearch: {} },
             {
               functionDeclarations: [
                 {
@@ -245,7 +248,11 @@ export default function App() {
 
             // Handle Transcriptions
             if (message.serverContent?.modelTurn?.parts[0]?.text) {
-              setTranscript(prev => [...prev, `Navigator: ${message.serverContent?.modelTurn?.parts[0]?.text}`].slice(-5));
+              const text = message.serverContent.modelTurn.parts[0].text;
+              setTranscript(prev => [...prev, `Navigator: ${text}`].slice(-5));
+              if (status === 'assisting' || viewMode === 'research') {
+                setResearchSummary(prev => (prev ? prev + "\n" + text : text));
+              }
             }
             
             // Handle Interruptions
@@ -294,6 +301,8 @@ export default function App() {
                 } else if (call.name === 'trigger_flight_alert') {
                   const destination = call.args.destination as string;
                   setFlightAlert(destination);
+                  setResearchSummary(null); // Clear old research
+                  setCurrentUrl(null);
                   setStatus('alerting');
                   addAction("Alert", `Detected international flight to ${destination}`);
                   result = `Alert triggered for ${destination}.`;
@@ -613,29 +622,57 @@ export default function App() {
             </div>
 
             <div className={`${viewMode === 'research' ? 'block' : 'hidden'} w-full h-full bg-white flex flex-col`}>
-              {currentUrl ? (
-                <>
-                  <div className="p-3 bg-gray-100 border-b flex items-center gap-2">
-                    <Globe className="w-4 h-4 text-gray-500" />
-                    <span className="text-xs text-gray-600 truncate font-mono">{currentUrl}</span>
-                  </div>
-                  <iframe 
-                    src={currentUrl} 
-                    className="flex-1 w-full border-none"
-                    title="Research Panel"
-                  />
-                </>
-              ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-center p-12 space-y-4">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
-                    <Globe className="w-8 h-8 text-gray-300" />
-                  </div>
-                  <div>
-                    <h4 className="text-lg font-bold text-gray-800">No Research Active</h4>
-                    <p className="text-sm text-gray-500">Cygnus will open travel requirements here when detected.</p>
-                  </div>
+              <div className="p-4 bg-gray-50 border-b flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-emerald-600" />
+                  <span className="text-xs font-bold text-gray-700 uppercase tracking-tight">Research Assistant</span>
                 </div>
-              )}
+                {currentUrl && (
+                  <a 
+                    href={currentUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-1 bg-emerald-600 text-white text-[10px] font-bold rounded-lg hover:bg-emerald-700 transition-all"
+                  >
+                    Open Official Site <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {currentUrl ? (
+                  <div className="space-y-4">
+                    <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Info className="w-4 h-4 text-emerald-600" />
+                        <h5 className="text-sm font-bold text-emerald-900">Cygnus Live Guidance</h5>
+                      </div>
+                      <p className="text-xs text-emerald-800 leading-relaxed">
+                        I've opened the State Department requirements for you. Since some government sites restrict viewing inside other apps, 
+                        I recommend clicking the button above to view the full details in a new tab. 
+                        <strong> I will continue to guide you through the requirements here.</strong>
+                      </p>
+                    </div>
+
+                    <div className="prose prose-sm max-w-none">
+                      <h4 className="text-gray-900 font-bold">Quick Summary</h4>
+                      <div className="text-sm text-gray-600 leading-relaxed">
+                        {researchSummary || "Cygnus is fetching the latest passport validity rules for your destination..."}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
+                      <Globe className="w-8 h-8 text-gray-300" />
+                    </div>
+                    <div>
+                      <h4 className="text-lg font-bold text-gray-800">No Research Active</h4>
+                      <p className="text-sm text-gray-500">Cygnus will open travel requirements here when detected.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
             
             {/* Overlay UI */}
