@@ -30,14 +30,14 @@ You are Cygnus, a real-time UI Navigator.
 1. MONITOR: Watch screen for international flight bookings.
 2. ALERT: Call 'trigger_flight_alert' IMMEDIATELY when destination is seen. 
 3. TALK: Say "I noticed you're looking at international flights. Did you know 40% of travel cancellations are caused by passport validity issues?"
-4. HELP: Ask to check requirements. If yes, follow this EXACT sequence:
-   a. navigate_to_url("https://travel.state.gov/en/international-travel.html")
-   b. type_text(destination, "Select a destination search box")
-   c. click_element("Go button")
-   d. scroll_to_section("Travel Requirements")
-   e. highlight_text("Passport validity requirements")
+4. HELP: If they agree, guide them through travel.state.gov:
+   - ALWAYS resolve cities to countries (e.g., Athens -> Greece, Paris -> France).
+   - STEP 1: Use 'navigate_to_url' to show them the State Dept site.
+   - STEP 2: Use 'type_text' to point to the search box on THEIR screen.
+   - STEP 3: Use 'click_element' to point to the "Go" button.
+   - STEP 4: Once the page loads, use 'scroll_to_section' and 'highlight_text'.
 
-BE EXTREMELY FAST. TRIGGER ALERT FIRST.
+CLARIFICATION: You are a companion. You cannot control their browser. You move a VIRTUAL CURSOR on their screen share to GUIDE them. Tell them: "I'll show you where to look on your screen."
 `;
 
 // --- Components ---
@@ -52,6 +52,8 @@ export default function App() {
   const [actionHistory, setActionHistory] = useState<{type: string, detail: string, timestamp: string}[]>([]);
   const [transcript, setTranscript] = useState<string[]>([]);
   const [flightAlert, setFlightAlert] = useState<string | null>(null);
+  const [currentUrl, setCurrentUrl] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'vision' | 'research'>('vision');
   const [error, setError] = useState<string | null>(null);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
 
@@ -268,9 +270,10 @@ export default function App() {
 
                 if (call.name === 'navigate_to_url') {
                   const url = call.args.url as string;
+                  setCurrentUrl(url);
+                  setViewMode('research');
                   addAction("Navigation", `Navigating to ${url}`);
-                  window.open(url, '_blank');
-                  result = `Opened ${url} in a new tab.`;
+                  result = `Navigated to ${url}. I've opened a research panel for you in this window.`;
                 } else if (call.name === 'click_element') {
                   const desc = call.args.description as string;
                   const x = (call.args.x as number) || 50;
@@ -314,6 +317,7 @@ export default function App() {
                 }
 
                 responses.push({
+                  name: call.name,
                   id: call.id,
                   response: { result }
                 });
@@ -555,41 +559,85 @@ export default function App() {
           </AnimatePresence>
 
           <section className="bg-[#151619] rounded-3xl overflow-hidden shadow-2xl aspect-video relative group">
-            <video 
-              ref={videoRef} 
-              autoPlay 
-              muted 
-              className="w-full h-full object-cover opacity-80"
-            />
-            <canvas ref={canvasRef} width={480} height={270} className="hidden" />
-            
-            {/* Virtual Cursor */}
-            <AnimatePresence>
-              {showCursor && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.5 }}
-                  animate={{ 
-                    opacity: 1, 
-                    scale: 1,
-                    left: `${cursorPos.x}%`,
-                    top: `${cursorPos.y}%`
-                  }}
-                  exit={{ opacity: 0, scale: 0.5 }}
-                  transition={{ type: "spring", damping: 20, stiffness: 100 }}
-                  className="absolute z-50 pointer-events-none"
-                  style={{ transform: 'translate(-50%, -50%)' }}
-                >
-                  <div className="relative">
-                    <MousePointer2 className="w-8 h-8 text-white fill-[#151619] drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]" />
-                    <motion.div 
-                      animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
-                      transition={{ repeat: Infinity, duration: 1 }}
-                      className="absolute inset-0 bg-white/30 rounded-full -z-10"
-                    />
+            <div className="absolute top-4 right-4 z-50 flex gap-2">
+              <button 
+                onClick={() => setViewMode('vision')}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-mono uppercase tracking-wider transition-all ${viewMode === 'vision' ? 'bg-emerald-500 text-white' : 'bg-white/10 text-white/50 hover:bg-white/20'}`}
+              >
+                Vision
+              </button>
+              <button 
+                onClick={() => setViewMode('research')}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-mono uppercase tracking-wider transition-all ${viewMode === 'research' ? 'bg-emerald-500 text-white' : 'bg-white/10 text-white/50 hover:bg-white/20'}`}
+              >
+                Research
+              </button>
+            </div>
+
+            <div className={`${viewMode === 'vision' ? 'block' : 'hidden'} w-full h-full relative`}>
+              <video 
+                ref={videoRef} 
+                autoPlay 
+                muted 
+                className="w-full h-full object-cover opacity-80"
+              />
+              <canvas ref={canvasRef} width={480} height={270} className="hidden" />
+              
+              {/* Virtual Cursor */}
+              <AnimatePresence>
+                {showCursor && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.5 }}
+                    animate={{ 
+                      opacity: 1, 
+                      scale: 1,
+                      left: `${cursorPos.x}%`,
+                      top: `${cursorPos.y}%`
+                    }}
+                    exit={{ opacity: 0, scale: 0.5 }}
+                    transition={{ type: "spring", damping: 20, stiffness: 100 }}
+                    className="absolute z-50 pointer-events-none"
+                    style={{ transform: 'translate(-50%, -50%)' }}
+                  >
+                    <div className="relative">
+                      <MousePointer2 className="w-8 h-8 text-white fill-[#151619] drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]" />
+                      <motion.div 
+                        animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
+                        transition={{ repeat: Infinity, duration: 1 }}
+                        className="absolute inset-0 bg-white/30 rounded-full -z-10"
+                      />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <div className={`${viewMode === 'research' ? 'block' : 'hidden'} w-full h-full bg-white flex flex-col`}>
+              {currentUrl ? (
+                <>
+                  <div className="p-3 bg-gray-100 border-b flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-gray-500" />
+                    <span className="text-xs text-gray-600 truncate font-mono">{currentUrl}</span>
                   </div>
-                </motion.div>
+                  <iframe 
+                    src={currentUrl} 
+                    className="flex-1 w-full border-none"
+                    title="Research Panel"
+                  />
+                </>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center text-center p-12 space-y-4">
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
+                    <Globe className="w-8 h-8 text-gray-300" />
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-bold text-gray-800">No Research Active</h4>
+                    <p className="text-sm text-gray-500">Cygnus will open travel requirements here when detected.</p>
+                  </div>
+                </div>
               )}
-            </AnimatePresence>
+            </div>
+            
             {/* Overlay UI */}
             <div className="absolute inset-0 p-6 flex flex-col justify-between pointer-events-none">
               <div className="flex justify-between items-start">
