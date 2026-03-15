@@ -622,7 +622,7 @@ export default function App() {
             </div>
 
             <div className={`${viewMode === 'research' ? 'block' : 'hidden'} w-full h-full bg-white flex flex-col`}>
-              <div className="p-4 bg-gray-50 border-b flex items-center justify-between">
+              <div className="p-4 bg-gray-50 border-b flex items-center gap-4">
                 <div className="flex items-center gap-2">
                   <Globe className="w-4 h-4 text-emerald-600" />
                   <span className="text-xs font-bold text-gray-700 uppercase tracking-tight">Research Assistant</span>
