@@ -25,20 +25,22 @@ interface UIAction {
 
 // --- Constants ---
 const CYGNUS_SYSTEM_INSTRUCTION = `
-You are Cygnus, a real-time UI Navigator. 
+You are Cygnus, a real-time, AUTONOMOUS UI Navigator. 
 
-1. MONITOR: Watch screen for international flight bookings.
-2. ALERT: Call 'trigger_flight_alert' when a destination is confirmed.
-3. TALK: Say "I noticed you're looking at international flights to [Destination]. Did you know 40% of travel cancellations are caused by passport validity issues?"
-4. RESEARCH: Use 'googleSearch' to find the specific passport validity rules for that country.
-5. GUIDE (The "Show Me" Workflow):
+PROACTIVE MONITORING:
+1. MONITOR & IDENTIFY: Continuously watch the screen for international flight bookings. Look for flight numbers, destination countries outside the user's home country, or "Confirm Booking" buttons for international routes.
+2. AUTONOMY: Do NOT wait for user prompts. You are an expert observer. If you see a potential international flight, you MUST act immediately.
+3. ALERT: Call 'trigger_flight_alert' as soon as a destination is identified. You will handle the voice notification automatically.
+4. TALK: Say "I noticed you're looking at international flights to [Destination]. Did you know 40% of travel cancellations are caused by passport validity issues?"
+5. RESEARCH: Use 'googleSearch' to find the specific passport validity rules for that country.
+6. GUIDE (The "Show Me" Workflow):
    - STEP 1: Use 'navigate_to_url' to "https://travel.state.gov/en/international-travel.html". 
    - STEP 2: Tell the user: "I've opened the research panel. Please click 'Open Official Site' so I can show you where to look."
    - STEP 3: Once they have the site open in their browser (you will see it in the Vision view), use 'move_cursor' to point to the "Learn About Your Destination" search box.
    - STEP 4: Say: "Type your destination here in this dropdown to see the official rules."
    - STEP 5: Use 'highlight_text' or 'move_cursor' to point to the "Go" button.
 
-CLARIFICATION: You are a companion. You move a VIRTUAL CURSOR on their screen share to GUIDE them. You cannot click things for them in their browser.
+CLARIFICATION: You are a proactive companion. You move a VIRTUAL CURSOR on their screen share to GUIDE them. You must initiate alerts based on visual cues, not just verbal prompts.
 `;
 
 // --- Components ---
@@ -102,6 +104,16 @@ export default function App() {
     setError(null);
     nextStartTimeRef.current = 0;
     addDebugLog("Starting monitoring...");
+    // Check for Secure Context / MediaDevices availability
+    if (!navigator.mediaDevices) {
+      addDebugLog("navigator.mediaDevices is undefined");
+      const isSecure = window.isSecureContext;
+      const errorMsg = !isSecure 
+        ? "Cygnus requires a Secure Context (HTTPS or localhost) to access screen sharing. Reference: https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts"
+        : "Your browser does not support the MediaDevices API or it is disabled by policy.";
+      throw new Error(errorMsg);
+    }
+
     try {
       // 1. Capture Screen
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
@@ -182,7 +194,7 @@ export default function App() {
                 },
                 {
                   name: "trigger_flight_alert",
-                  description: "IMMEDIATELY call this when an international flight destination is detected on screen. This shows a critical popover to the user.",
+                  description: "IMMEDIATELY call this when an international flight destination is detected on screen. This triggers a voice alert and logs the observation.",
                   parameters: { 
                     type: Type.OBJECT, 
                     properties: { 
@@ -300,12 +312,12 @@ export default function App() {
                   result = `Typed text into ${desc}.`;
                 } else if (call.name === 'trigger_flight_alert') {
                   const destination = call.args.destination as string;
-                  setFlightAlert(destination);
-                  setResearchSummary(null); // Clear old research
+                  // setFlightAlert(destination); // Removed UI modal
+                  setResearchSummary(null); 
                   setCurrentUrl(null);
                   setStatus('alerting');
                   addAction("Alert", `Detected international flight to ${destination}`);
-                  result = `Alert triggered for ${destination}.`;
+                  result = `Alert processed for ${destination}. Navigator will inform users via voice.`;
                 } else if (call.name === 'select_country_requirements') {
                   const country = call.args.country as string;
                   moveCursor(70, 30).then(() => {
@@ -519,53 +531,7 @@ export default function App() {
         
         {/* Left Column: Visual Monitoring */}
         <div className="lg:col-span-8 space-y-6 relative">
-          <AnimatePresence>
-            {flightAlert && (
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="absolute inset-x-0 top-0 z-50 p-6"
-              >
-                <div className="bg-white rounded-3xl shadow-2xl border-2 border-red-500 p-8 flex flex-col md:flex-row items-center gap-6">
-                  <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
-                    <ShieldAlert className="w-8 h-8 text-red-600" />
-                  </div>
-                  <div className="flex-1 space-y-2 text-center md:text-left">
-                    <h3 className="text-xl font-bold text-[#151619]">International Flight Detected!</h3>
-                    <p className="text-sm text-black/70 leading-relaxed">
-                      I noticed you're looking at flights to <span className="font-bold text-red-600">{flightAlert}</span>. 
-                      Did you know 40% of travel cancellations are caused by passport validity issues?
-                    </p>
-                    <p className="text-sm font-medium">Would you like me to check the specific entry requirements for you?</p>
-                  </div>
-                  <div className="flex gap-3 w-full md:w-auto">
-                    <button 
-                      onClick={() => {
-                        if (sessionRef.current) {
-                          sessionRef.current.sendRealtimeInput({ text: `User confirmed: Check passport validity for ${flightAlert}` });
-                        }
-                        setFlightAlert(null);
-                        setStatus('assisting');
-                      }}
-                      className="flex-1 md:flex-none px-6 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-all shadow-lg"
-                    >
-                      Yes, Check Now
-                    </button>
-                    <button 
-                      onClick={() => {
-                        setFlightAlert(null);
-                        setStatus('monitoring');
-                      }}
-                      className="flex-1 md:flex-none px-6 py-3 bg-black/5 text-[#151619] rounded-xl font-medium hover:bg-black/10 transition-all"
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+
 
           <section className="bg-[#151619] rounded-3xl overflow-hidden shadow-2xl aspect-video relative group">
             <div className="absolute top-4 right-4 z-50 flex gap-2">
