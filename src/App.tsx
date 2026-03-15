@@ -30,7 +30,7 @@ You are Cygnus, a real-time UI Navigator.
 1. MONITOR: Watch screen for international flight bookings.
 2. ALERT: Call 'trigger_flight_alert' when a destination is confirmed.
 3. TALK: Say "I noticed you're looking at international flights to [Destination]. Did you know 40% of travel cancellations are caused by passport validity issues?"
-4. RESEARCH: Use 'googleSearch' to find the specific passport validity rules for that country.
+4. RESEARCH: Use 'get_passport_research' to find the specific passport validity rules for that country.
 5. GUIDE (The "Show Me" Workflow):
    - STEP 1: Use 'navigate_to_url' to "https://travel.state.gov/en/international-travel.html". 
    - STEP 2: Tell the user: "I've opened the research panel. Please click 'Open Official Site' so I can show you where to look."
@@ -147,7 +147,6 @@ export default function App() {
           },
           systemInstruction: CYGNUS_SYSTEM_INSTRUCTION,
           tools: [
-            { googleSearch: {} },
             {
               functionDeclarations: [
                 {
@@ -222,6 +221,17 @@ export default function App() {
                       text_description: { type: Type.STRING }
                     },
                     required: ["text_description"]
+                  }
+                },
+                {
+                  name: "get_passport_research",
+                  description: "Uses Google Search to find specific passport validity and entry requirements for a country.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      country: { type: Type.STRING, description: "The country to research." }
+                    },
+                    required: ["country"]
                   }
                 }
               ]
@@ -323,6 +333,24 @@ export default function App() {
                   addAction("Highlight", `Highlighting: ${text}`);
                   result = `Highlighted ${text}.`;
                   setTimeout(() => setShowCursor(false), 1000);
+                } else if (call.name === 'get_passport_research') {
+                  const country = call.args.country as string;
+                  addAction("Research", `Searching for passport rules for ${country}`);
+                  try {
+                    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+                    const researchResponse = await ai.models.generateContent({
+                      model: "gemini-3-flash-preview",
+                      contents: `What are the passport validity and entry requirements for US citizens traveling to ${country}? Focus on the 3-6 month rule and blank pages.`,
+                      config: {
+                        tools: [{ googleSearch: {} }]
+                      }
+                    });
+                    const summary = researchResponse.text || "No specific details found.";
+                    setResearchSummary(summary);
+                    result = `Research complete for ${country}. Summary displayed in research panel.`;
+                  } catch (e) {
+                    result = `Research failed for ${country}.`;
+                  }
                 }
 
                 responses.push({
@@ -379,15 +407,20 @@ export default function App() {
     const ctx = canvas.getContext('2d');
     
     // Video Streaming
+    let frameCount = 0;
     const sendFrame = () => {
       if (!isRecordingRef.current) return;
       if (ctx && video.readyState === video.HAVE_ENOUGH_DATA) {
-        // Use a smaller internal canvas for streaming to reduce data size
+        // Use a larger canvas for better text recognition
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const base64Data = canvas.toDataURL('image/jpeg', 0.2).split(',')[1];
+        const base64Data = canvas.toDataURL('image/jpeg', 0.4).split(',')[1];
         session.sendRealtimeInput({ media: { data: base64Data, mimeType: 'image/jpeg' } });
+        frameCount++;
+        if (frameCount % 10 === 0) {
+          addDebugLog(`Sent ${frameCount} frames...`);
+        }
       }
-      setTimeout(sendFrame, 1000); // 1fps is enough for UI navigation
+      setTimeout(sendFrame, 500); // 2fps for better responsiveness
     };
     sendFrame();
 
@@ -584,13 +617,17 @@ export default function App() {
             </div>
 
             <div className={`${viewMode === 'vision' ? 'block' : 'hidden'} w-full h-full relative`}>
+              <div className="absolute top-4 left-4 z-50 flex items-center gap-2 px-3 py-1 bg-red-600/80 backdrop-blur-sm rounded-full text-[10px] font-bold text-white uppercase tracking-widest animate-pulse">
+                <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                Live Feed
+              </div>
               <video 
                 ref={videoRef} 
                 autoPlay 
                 muted 
                 className="w-full h-full object-cover opacity-80"
               />
-              <canvas ref={canvasRef} width={480} height={270} className="hidden" />
+              <canvas ref={canvasRef} width={1280} height={720} className="hidden" />
               
               {/* Virtual Cursor */}
               <AnimatePresence>
@@ -803,6 +840,9 @@ export default function App() {
                       {action.type === 'Click' && <Activity className="w-4 h-4" />}
                       {action.type === 'Type' && <Mic className="w-4 h-4" />}
                       {action.type === 'Alert' && <ShieldAlert className="w-4 h-4 text-red-500" />}
+                      {action.type === 'Research' && <Globe className="w-4 h-4 text-emerald-500" />}
+                      {action.type === 'Scroll' && <ChevronRight className="w-4 h-4 rotate-90" />}
+                      {action.type === 'Highlight' && <Info className="w-4 h-4 text-blue-500" />}
                     </div>
                     <div className="space-y-0.5">
                       <p className="text-[10px] font-mono uppercase opacity-50">{action.timestamp}</p>
