@@ -31,7 +31,8 @@ You are Cygnus, a real-time UI Navigator.
 2. ALERT: Call 'trigger_flight_alert' IMMEDIATELY when an international destination is detected (even if they are just searching). DO NOT wait for a booking confirmation.
 3. TALK: Say "I noticed you're looking at international flights to [Destination]. Did you know 40% of travel cancellations are caused by passport validity issues, like the 3-6 month rule or lack of empty stamp pages?"
 4. OFFER HELP: Ask: "Would you like to check the specific entry requirements for your destination?"
-5. ACTION: If they agree, tell them to click the "Yes, Check Now" button on your alert popover, which will open the official US State Department travel site in a new tab for them.
+5. ACTION: If they agree, tell them to click the "Yes, Check Now" button on your alert popover. 
+6. TUTORIAL: If the user seems confused or asks how to check requirements, call 'show_tutorial_video' to show them a screen recording of how to use the State Department site.
 
 CLARIFICATION: You are a companion. You guide the user. You cannot open tabs for them directly, so you must trigger the alert popover which has the button they need.
 `;
@@ -48,6 +49,7 @@ export default function App() {
   const [actionHistory, setActionHistory] = useState<{type: string, detail: string, timestamp: string}[]>([]);
   const [transcript, setTranscript] = useState<string[]>([]);
   const [flightAlert, setFlightAlert] = useState<string | null>(null);
+  const [showTutorial, setShowTutorial] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
 
@@ -80,6 +82,11 @@ export default function App() {
     // Brief "click" effect
     setCursorPos(prev => ({ ...prev })); 
     await new Promise(resolve => setTimeout(resolve, 200));
+  };
+
+  const triggerTutorial = () => {
+    setShowTutorial(true);
+    addAction("Tutorial", "Displaying requirement lookup tutorial video");
   };
 
   // Initialize Audio Context on first user interaction
@@ -177,6 +184,11 @@ export default function App() {
                     },
                     required: ["destination"]
                   }
+                },
+                {
+                  name: "show_tutorial_video",
+                  description: "Shows a screen recording tutorial to the user explaining how to look up travel requirements.",
+                  parameters: { type: Type.OBJECT, properties: {} }
                 }
               ]
             }
@@ -249,6 +261,9 @@ export default function App() {
                   setStatus('alerting');
                   addAction("Alert", `Detected international flight to ${destination}`);
                   result = `Alert triggered for ${destination}.`;
+                } else if (call.name === 'show_tutorial_video') {
+                  triggerTutorial();
+                  result = "Tutorial video displayed to user.";
                 }
 
                 responses.push({
@@ -481,6 +496,15 @@ export default function App() {
                     </button>
                     <button 
                       onClick={() => {
+                        triggerTutorial();
+                      }}
+                      className="flex-1 md:flex-none px-6 py-3 bg-emerald-100 text-emerald-700 rounded-xl font-bold hover:bg-emerald-200 transition-all flex items-center gap-2"
+                    >
+                      <Globe className="w-4 h-4" />
+                      Watch Tutorial
+                    </button>
+                    <button 
+                      onClick={() => {
                         setFlightAlert(null);
                         setStatus('monitoring');
                       }}
@@ -695,6 +719,79 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Tutorial Modal */}
+      <AnimatePresence>
+        {showTutorial && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8 bg-black/80 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col"
+            >
+              <div className="p-6 border-b border-black/5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600">
+                    <Globe className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold">Requirement Lookup Tutorial</h3>
+                    <p className="text-xs text-black/40 font-mono uppercase">Screen Recording Guide</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowTutorial(false)}
+                  className="w-10 h-10 rounded-full hover:bg-black/5 flex items-center justify-center transition-colors"
+                >
+                  <ChevronRight className="w-6 h-6 rotate-90" />
+                </button>
+              </div>
+              
+              <div className="aspect-video bg-black relative group">
+                {/* Placeholder Video - User should replace this with their actual recording */}
+                <video 
+                  controls 
+                  autoPlay
+                  className="w-full h-full"
+                  src="https://www.w3schools.com/html/mov_bbb.mp4" 
+                />
+                <div className="absolute inset-0 pointer-events-none border-4 border-emerald-500/20 m-4 rounded-xl" />
+              </div>
+
+              <div className="p-8 bg-emerald-50/50 flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-emerald-900">Ready to check your destination?</p>
+                  <p className="text-xs text-emerald-700/70">This guide shows you exactly where to look on travel.state.gov</p>
+                </div>
+                <div className="flex gap-3 w-full md:w-auto">
+                  <button 
+                    onClick={() => {
+                      window.open('https://travel.state.gov/en/international-travel.html', '_blank');
+                      setShowTutorial(false);
+                    }}
+                    className="flex-1 md:flex-none px-8 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg flex items-center justify-center gap-2"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Open State Dept Site
+                  </button>
+                  <button 
+                    onClick={() => setShowTutorial(false)}
+                    className="flex-1 md:flex-none px-8 py-3 bg-white text-[#151619] border border-black/10 rounded-xl font-medium hover:bg-black/5 transition-all"
+                  >
+                    Close Guide
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
