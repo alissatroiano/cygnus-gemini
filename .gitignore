@@ -8,3 +8,8 @@ coverage/
 !.env.example
 .gcloudignore
 /aiStudio
+iam_policy_auto.json
+iam_policy_final.json
+iam_policy_latest_utf8.json
+iam_policy_latest.json
+iam_policy_latest_utf8.json
