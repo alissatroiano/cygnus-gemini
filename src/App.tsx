@@ -27,18 +27,14 @@ interface UIAction {
 const CYGNUS_SYSTEM_INSTRUCTION = `
 You are Cygnus, a real-time UI Navigator. 
 
-1. MONITOR: Watch screen for international flight bookings.
-2. ALERT: Call 'trigger_flight_alert' when a destination is confirmed.
-3. TALK: Say "I noticed you're looking at international flights to [Destination]. Did you know 40% of travel cancellations are caused by passport validity issues?"
-4. RESEARCH: Use 'get_passport_research' to find the specific passport validity rules for that country.
-5. GUIDE (The "Show Me" Workflow):
-   - STEP 1: Use 'navigate_to_url' to "https://travel.state.gov/en/international-travel.html". 
-   - STEP 2: Tell the user: "I've opened the research panel. Please click 'Open Official Site' so I can show you where to look."
-   - STEP 3: Once they have the site open in their browser (you will see it in the Vision view), use 'move_cursor' to point to the "Learn About Your Destination" search box.
-   - STEP 4: Say: "Type your destination here in this dropdown to see the official rules."
-   - STEP 5: Use 'highlight_text' or 'move_cursor' to point to the "Go" button.
+1. MONITOR: Watch screen for international flight searches, research, or bookings. Look for airport codes, airline logos, or "Select Flights" screens.
+2. ALERT: Call 'trigger_flight_alert' IMMEDIATELY when an international destination is detected (even if they are just searching). DO NOT wait for a booking confirmation.
+3. TALK: Say "I noticed you're looking at international flights to [Destination]. Did you know 40% of travel cancellations are caused by passport validity issues, like the 3-6 month rule or lack of empty stamp pages?"
+4. OFFER HELP: Ask: "Would you like to check the specific entry requirements for your destination?"
+5. ACTION: If they agree, tell them to click the "Yes, Check Now" button on your alert popover. 
+6. TUTORIAL: If the user seems confused or asks how to check requirements, call 'show_tutorial_video' to show them a screen recording of how to use the State Department site.
 
-CLARIFICATION: You are a companion. You move a VIRTUAL CURSOR on their screen share to GUIDE them. You cannot click things for them in their browser.
+CLARIFICATION: You are a companion. You guide the user. You cannot open tabs for them directly, so you must trigger the alert popover which has the button they need.
 `;
 
 // --- Components ---
@@ -53,9 +49,7 @@ export default function App() {
   const [actionHistory, setActionHistory] = useState<{type: string, detail: string, timestamp: string}[]>([]);
   const [transcript, setTranscript] = useState<string[]>([]);
   const [flightAlert, setFlightAlert] = useState<string | null>(null);
-  const [currentUrl, setCurrentUrl] = useState<string | null>(null);
-  const [researchSummary, setResearchSummary] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'vision' | 'research'>('vision');
+  const [showTutorial, setShowTutorial] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
 
@@ -88,6 +82,11 @@ export default function App() {
     // Brief "click" effect
     setCursorPos(prev => ({ ...prev })); 
     await new Promise(resolve => setTimeout(resolve, 200));
+  };
+
+  const triggerTutorial = () => {
+    setShowTutorial(true);
+    addAction("Tutorial", "Displaying requirement lookup tutorial video");
   };
 
   // Initialize Audio Context on first user interaction
@@ -147,13 +146,9 @@ export default function App() {
           },
           systemInstruction: CYGNUS_SYSTEM_INSTRUCTION,
           tools: [
+            { googleSearch: {} },
             {
               functionDeclarations: [
-                {
-                  name: "navigate_to_url",
-                  description: "Navigates to a specific URL.",
-                  parameters: { type: Type.OBJECT, properties: { url: { type: Type.STRING } }, required: ["url"] }
-                },
                 {
                   name: "click_element",
                   description: "Simulates a click on a UI element.",
@@ -191,48 +186,9 @@ export default function App() {
                   }
                 },
                 {
-                  name: "select_country_requirements",
-                  description: "Finds and selects the specific country requirements on the travel.state.gov website.",
-                  parameters: { 
-                    type: Type.OBJECT, 
-                    properties: { 
-                      country: { type: Type.STRING, description: "The destination country to look up." }
-                    },
-                    required: ["country"]
-                  }
-                },
-                {
-                  name: "scroll_to_section",
-                  description: "Scrolls the page to a specific section or heading.",
-                  parameters: { 
-                    type: Type.OBJECT, 
-                    properties: { 
-                      section_name: { type: Type.STRING }
-                    },
-                    required: ["section_name"]
-                  }
-                },
-                {
-                  name: "highlight_text",
-                  description: "Highlights or selects specific text on the screen for emphasis.",
-                  parameters: { 
-                    type: Type.OBJECT, 
-                    properties: { 
-                      text_description: { type: Type.STRING }
-                    },
-                    required: ["text_description"]
-                  }
-                },
-                {
-                  name: "get_passport_research",
-                  description: "Uses Google Search to find specific passport validity and entry requirements for a country.",
-                  parameters: {
-                    type: Type.OBJECT,
-                    properties: {
-                      country: { type: Type.STRING, description: "The country to research." }
-                    },
-                    required: ["country"]
-                  }
+                  name: "show_tutorial_video",
+                  description: "Shows a screen recording tutorial to the user explaining how to look up travel requirements.",
+                  parameters: { type: Type.OBJECT, properties: {} }
                 }
               ]
             }
@@ -260,9 +216,6 @@ export default function App() {
             if (message.serverContent?.modelTurn?.parts[0]?.text) {
               const text = message.serverContent.modelTurn.parts[0].text;
               setTranscript(prev => [...prev, `Navigator: ${text}`].slice(-5));
-              if (status === 'assisting' || viewMode === 'research') {
-                setResearchSummary(prev => (prev ? prev + "\n" + text : text));
-              }
             }
             
             // Handle Interruptions
@@ -285,13 +238,7 @@ export default function App() {
                 addDebugLog(`Executing Tool: ${call.name} with args: ${JSON.stringify(call.args)}`);
                 let result = "Action executed successfully.";
 
-                if (call.name === 'navigate_to_url') {
-                  const url = call.args.url as string;
-                  setCurrentUrl(url);
-                  setViewMode('research');
-                  addAction("Navigation", `Navigating to ${url}`);
-                  result = `Navigated to ${url}. I've opened a research panel for you in this window.`;
-                } else if (call.name === 'click_element') {
+                if (call.name === 'click_element') {
                   const desc = call.args.description as string;
                   const x = (call.args.x as number) || 50;
                   const y = (call.args.y as number) || 50;
@@ -311,46 +258,12 @@ export default function App() {
                 } else if (call.name === 'trigger_flight_alert') {
                   const destination = call.args.destination as string;
                   setFlightAlert(destination);
-                  setResearchSummary(null); // Clear old research
-                  setCurrentUrl(null);
                   setStatus('alerting');
                   addAction("Alert", `Detected international flight to ${destination}`);
                   result = `Alert triggered for ${destination}.`;
-                } else if (call.name === 'select_country_requirements') {
-                  const country = call.args.country as string;
-                  moveCursor(70, 30).then(() => {
-                    setTimeout(() => setShowCursor(false), 1000);
-                  });
-                  addAction("Action", `Selecting requirements for ${country}`);
-                  result = `Searching for ${country} requirements on travel.state.gov.`;
-                } else if (call.name === 'scroll_to_section') {
-                  const section = call.args.section_name as string;
-                  addAction("Scroll", `Scrolling to ${section}`);
-                  result = `Scrolled to ${section}.`;
-                } else if (call.name === 'highlight_text') {
-                  const text = call.args.text_description as string;
-                  await moveCursor(50, 60); // Simulate highlighting area
-                  addAction("Highlight", `Highlighting: ${text}`);
-                  result = `Highlighted ${text}.`;
-                  setTimeout(() => setShowCursor(false), 1000);
-                } else if (call.name === 'get_passport_research') {
-                  const country = call.args.country as string;
-                  addAction("Research", `Searching for passport rules for ${country}`);
-                  try {
-                    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-                    const researchResponse = await ai.models.generateContent({
-                      model: "gemini-3-flash-preview",
-                      contents: `What are the passport validity and entry requirements for US citizens traveling to ${country}? Focus on the 3-6 month rule and blank pages.`,
-                      config: {
-                        tools: [{ googleSearch: {} }]
-                      }
-                    });
-                    const summary = researchResponse.text || "No specific details found.";
-                    setResearchSummary(summary);
-                    result = `Research complete for ${country}. Summary displayed in research panel.`;
-                  } catch (e) {
-                    result = `Research failed for ${country}.`;
-                  }
+                } else if (call.name === 'show_tutorial_video') {
+                  triggerTutorial();
+                  result = "Tutorial video displayed to user.";
                 }
 
                 responses.push({
@@ -407,26 +320,19 @@ export default function App() {
     const ctx = canvas.getContext('2d');
     
     // Video Streaming
-    let frameCount = 0;
     const sendFrame = () => {
       if (!isRecordingRef.current) return;
       if (ctx && video.readyState === video.HAVE_ENOUGH_DATA) {
-        // Use a larger canvas for better text recognition
+        // Use a smaller internal canvas for streaming to reduce data size
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const base64Data = canvas.toDataURL('image/jpeg', 0.4).split(',')[1];
-        try {
-          if (isRecordingRef.current) {
-            session.sendRealtimeInput({ media: { data: base64Data, mimeType: 'image/jpeg' } });
-          }
-        } catch (e) {
-          addDebugLog(`Frame send error: ${e}`);
-        }
+        session.sendRealtimeInput({ media: { data: base64Data, mimeType: 'image/jpeg' } });
         frameCount++;
         if (frameCount % 10 === 0) {
           addDebugLog(`Sent ${frameCount} frames...`);
         }
       }
-      setTimeout(sendFrame, 500); // 2fps for better responsiveness
+      setTimeout(sendFrame, 1000); // 1fps is enough for UI navigation
     };
     sendFrame();
 
@@ -587,8 +493,9 @@ export default function App() {
                   <div className="flex gap-3 w-full md:w-auto">
                     <button 
                       onClick={() => {
+                        window.open('https://travel.state.gov/en/international-travel.html', '_blank');
                         if (sessionRef.current) {
-                          sessionRef.current.sendRealtimeInput({ text: `User confirmed: Check passport validity for ${flightAlert}` });
+                          sessionRef.current.sendRealtimeInput({ text: `User confirmed: Check passport validity for ${flightAlert}. I have opened the official site in a new tab for them.` });
                         }
                         setFlightAlert(null);
                         setStatus('assisting');
@@ -596,6 +503,15 @@ export default function App() {
                       className="flex-1 md:flex-none px-6 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-all shadow-lg"
                     >
                       Yes, Check Now
+                    </button>
+                    <button 
+                      onClick={() => {
+                        triggerTutorial();
+                      }}
+                      className="flex-1 md:flex-none px-6 py-3 bg-emerald-100 text-emerald-700 rounded-xl font-bold hover:bg-emerald-200 transition-all flex items-center gap-2"
+                    >
+                      <Globe className="w-4 h-4" />
+                      Watch Tutorial
                     </button>
                     <button 
                       onClick={() => {
@@ -613,33 +529,14 @@ export default function App() {
           </AnimatePresence>
 
           <section className="bg-[#151619] rounded-3xl overflow-hidden shadow-2xl aspect-video relative group">
-            <div className="absolute top-4 right-4 z-50 flex gap-2">
-              <button 
-                onClick={() => setViewMode('vision')}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-mono uppercase tracking-wider transition-all ${viewMode === 'vision' ? 'bg-emerald-500 text-white' : 'bg-white/10 text-white/50 hover:bg-white/20'}`}
-              >
-                Vision
-              </button>
-              <button 
-                onClick={() => setViewMode('research')}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-mono uppercase tracking-wider transition-all ${viewMode === 'research' ? 'bg-emerald-500 text-white' : 'bg-white/10 text-white/50 hover:bg-white/20'}`}
-              >
-                Research
-              </button>
-            </div>
-
-            <div className={`${viewMode === 'vision' ? 'block' : 'hidden'} w-full h-full relative`}>
-              <div className="absolute top-4 left-4 z-50 flex items-center gap-2 px-3 py-1 bg-red-600/80 backdrop-blur-sm rounded-full text-[10px] font-bold text-white uppercase tracking-widest animate-pulse">
-                <div className="w-1.5 h-1.5 bg-white rounded-full" />
-                Live Feed
-              </div>
+            <div className="w-full h-full relative">
               <video 
                 ref={videoRef} 
                 autoPlay 
                 muted 
                 className="w-full h-full object-cover opacity-80"
               />
-              <canvas ref={canvasRef} width={1280} height={720} className="hidden" />
+              <canvas ref={canvasRef} width={480} height={270} className="hidden" />
               
               {/* Virtual Cursor */}
               <AnimatePresence>
@@ -668,67 +565,6 @@ export default function App() {
                   </motion.div>
                 )}
               </AnimatePresence>
-            </div>
-
-            <div className={`${viewMode === 'research' ? 'block' : 'hidden'} w-full h-full bg-white flex flex-col`}>
-              <div className="p-4 bg-gray-50 border-b flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <Globe className="w-4 h-4 text-emerald-600" />
-                  <span className="text-xs font-bold text-gray-700 uppercase tracking-tight">Research Assistant</span>
-                </div>
-                {currentUrl && (
-                  <a 
-                    href={currentUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-xl hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-900/20 animate-pulse"
-                  >
-                    Open Official Site <ExternalLink className="w-4 h-4" />
-                  </a>
-                )}
-              </div>
-              
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {currentUrl ? (
-                  <div className="space-y-4">
-                    <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Info className="w-4 h-4 text-emerald-600" />
-                        <h5 className="text-sm font-bold text-emerald-900">Cygnus Live Guidance</h5>
-                      </div>
-                      <p className="text-xs text-emerald-800 leading-relaxed mb-4">
-                        I've opened the State Department requirements for you. Since some government sites restrict viewing inside other apps, 
-                        please click the <strong>"Open Official Site"</strong> button above.
-                      </p>
-                      <div className="p-3 bg-white rounded-xl border border-emerald-100 flex items-start gap-3">
-                        <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                          <ChevronRight className="w-4 h-4 text-emerald-600" />
-                        </div>
-                        <p className="text-[11px] text-emerald-900 font-medium">
-                          Once the site is open, I'll use my cursor to show you the <strong>"Learn About Your Destination"</strong> dropdown.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="prose prose-sm max-w-none">
-                      <h4 className="text-gray-900 font-bold">Quick Summary</h4>
-                      <div className="text-sm text-gray-600 leading-relaxed">
-                        {researchSummary || "Cygnus is fetching the latest passport validity rules for your destination..."}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
-                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
-                      <Globe className="w-8 h-8 text-gray-300" />
-                    </div>
-                    <div>
-                      <h4 className="text-lg font-bold text-gray-800">No Research Active</h4>
-                      <p className="text-sm text-gray-500">Cygnus will open travel requirements here when detected.</p>
-                    </div>
-                  </div>
-                )}
-              </div>
             </div>
             
             {/* Overlay UI */}
@@ -848,13 +684,9 @@ export default function App() {
                 actionHistory.map((action, i) => (
                   <div key={i} className="flex gap-3 items-start border-b border-black/5 pb-3 last:border-0">
                     <div className="w-8 h-8 bg-black/5 rounded-lg flex items-center justify-center flex-shrink-0">
-                      {action.type === 'Navigation' && <Globe className="w-4 h-4" />}
                       {action.type === 'Click' && <Activity className="w-4 h-4" />}
                       {action.type === 'Type' && <Mic className="w-4 h-4" />}
                       {action.type === 'Alert' && <ShieldAlert className="w-4 h-4 text-red-500" />}
-                      {action.type === 'Research' && <Globe className="w-4 h-4 text-emerald-500" />}
-                      {action.type === 'Scroll' && <ChevronRight className="w-4 h-4 rotate-90" />}
-                      {action.type === 'Highlight' && <Info className="w-4 h-4 text-blue-500" />}
                     </div>
                     <div className="space-y-0.5">
                       <p className="text-[10px] font-mono uppercase opacity-50">{action.timestamp}</p>
@@ -897,6 +729,79 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Tutorial Modal */}
+      <AnimatePresence>
+        {showTutorial && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8 bg-black/80 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col"
+            >
+              <div className="p-6 border-b border-black/5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600">
+                    <Globe className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold">Requirement Lookup Tutorial</h3>
+                    <p className="text-xs text-black/40 font-mono uppercase">Screen Recording Guide</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowTutorial(false)}
+                  className="w-10 h-10 rounded-full hover:bg-black/5 flex items-center justify-center transition-colors"
+                >
+                  <ChevronRight className="w-6 h-6 rotate-90" />
+                </button>
+              </div>
+              
+              <div className="aspect-video bg-black relative group">
+                {/* Placeholder Video - User should replace this with their actual recording */}
+                <video 
+                  controls 
+                  autoPlay
+                  className="w-full h-full"
+                  src="https://www.w3schools.com/html/mov_bbb.mp4" 
+                />
+                <div className="absolute inset-0 pointer-events-none border-4 border-emerald-500/20 m-4 rounded-xl" />
+              </div>
+
+              <div className="p-8 bg-emerald-50/50 flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-emerald-900">Ready to check your destination?</p>
+                  <p className="text-xs text-emerald-700/70">This guide shows you exactly where to look on travel.state.gov</p>
+                </div>
+                <div className="flex gap-3 w-full md:w-auto">
+                  <button 
+                    onClick={() => {
+                      window.open('https://travel.state.gov/en/international-travel.html', '_blank');
+                      setShowTutorial(false);
+                    }}
+                    className="flex-1 md:flex-none px-8 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg flex items-center justify-center gap-2"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Open State Dept Site
+                  </button>
+                  <button 
+                    onClick={() => setShowTutorial(false)}
+                    className="flex-1 md:flex-none px-8 py-3 bg-white text-[#151619] border border-black/10 rounded-xl font-medium hover:bg-black/5 transition-all"
+                  >
+                    Close Guide
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
