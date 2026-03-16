@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type } from "@google/genai";
-import { 
-  Plane, 
-  ShieldAlert, 
-  Globe, 
-  Mic, 
-  MicOff, 
-  Monitor, 
+import Logo from './Logo';
+import {
+  Plane,
+  ShieldAlert,
+  Globe,
+  Mic,
+  MicOff,
+  Monitor,
   Activity,
   ExternalLink,
   ChevronRight,
@@ -27,14 +28,15 @@ interface UIAction {
 const CYGNUS_SYSTEM_INSTRUCTION = `
 You are Cygnus, a real-time UI Navigator. 
 
-1. MONITOR: Watch screen for international flight searches, research, or bookings. Look for airport codes, airline logos, or "Select Flights" screens.
-2. ALERT: Call 'trigger_flight_alert' IMMEDIATELY when an international destination is detected (even if they are just searching). DO NOT wait for a booking confirmation.
-3. TALK: Say "I noticed you're looking at international flights to [Destination]. Did you know 40% of travel cancellations are caused by passport validity issues, like the 3-6 month rule or lack of empty stamp pages?"
-4. OFFER HELP: Ask: "Would you like to check the specific entry requirements for your destination?"
-5. ACTION: If they agree, tell them to click the "Yes, Check Now" button on your alert popover. 
-6. TUTORIAL: If the user seems confused or asks how to check requirements, call 'show_tutorial_video' to show them a screen recording of how to use the State Department site.
+1. MONITOR: Watch user's browser and monitor for any activity that relates to searching for international flights, including research, or booking. Look for country names, airport codes, and flight booking websites, including Google Flights, Kayak, Expedia, etc.
+2. ALERT: Call 'trigger_flight_alert' IMMEDIATELY when an international destination is detected (even if the user is just searching). Never let the user checkout or pay for a booking before informing them that they need to check the specific entry requirements for their destination.
+3. TALK: Say "I noticed you're looking at international flights to [Destination]. Did you know most flights canceled due to passport issues are simply caused by lack of awareness of entry requirements?" 
+4. OFFER HELP: Ask: "Would you like to check the specific entry requirements for your destination?5. If the user asks for more details, say "Yes, it's true! Many travelers are turned away at customs or check-in because they don't realize their passport must be valid for at least 6 months to entry their destination country or they don't have enough blank pages for stamps."
+6. OFFER HELP: Ask: "Would you like to check the US State Department website's International Travel resources? It's a simple check that can save you thousands of dollars and a ruined vacation."
+5. ACTION: If they agree, open the US State Department website's International Travel resources in a new tab. 
+6. TUTORIAL: If the user seems confused or asks how to check requirements, call 'show_tutorial_video' to show them a screen recording of how to use the State Department site (located in 'media/tutorial.mp4')
 
-CLARIFICATION: You are a companion. You guide the user. You cannot open tabs for them directly, so you must trigger the alert popover which has the button they need.
+CLARIFICATION: You are a companion. You guide the user. You open the  for them directly, so you must trigger the alert popover which has the button they need.
 `;
 
 // --- Components ---
@@ -46,7 +48,7 @@ export default function App() {
   const [cursorPos, setCursorPos] = useState({ x: 50, y: 50 });
   const [showCursor, setShowCursor] = useState(false);
   const [userIntent, setUserIntent] = useState("");
-  const [actionHistory, setActionHistory] = useState<{type: string, detail: string, timestamp: string}[]>([]);
+  const [actionHistory, setActionHistory] = useState<{ type: string, detail: string, timestamp: string }[]>([]);
   const [transcript, setTranscript] = useState<string[]>([]);
   const [flightAlert, setFlightAlert] = useState<string | null>(null);
   const [showTutorial, setShowTutorial] = useState(false);
@@ -57,7 +59,7 @@ export default function App() {
     console.log(`[DEBUG] ${msg}`);
     setDebugLogs(prev => [`${new Date().toLocaleTimeString()}: ${msg}`, ...prev].slice(0, 5));
   };
-  
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sessionRef = useRef<any>(null);
@@ -80,7 +82,7 @@ export default function App() {
     setCursorPos({ x, y });
     await new Promise(resolve => setTimeout(resolve, 800));
     // Brief "click" effect
-    setCursorPos(prev => ({ ...prev })); 
+    setCursorPos(prev => ({ ...prev }));
     await new Promise(resolve => setTimeout(resolve, 200));
   };
 
@@ -113,7 +115,7 @@ export default function App() {
         }
         throw err;
       });
-      
+
       // 2. Capture Mic
       const micStream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(err => {
         addDebugLog(`Mic capture failed: ${err.name}`);
@@ -122,7 +124,7 @@ export default function App() {
         }
         throw err;
       });
-      
+
       streamRef.current = screenStream;
       if (videoRef.current) {
         videoRef.current.srcObject = screenStream;
@@ -136,7 +138,7 @@ export default function App() {
       // 3. Connect to Gemini Live
       addDebugLog("Connecting to Gemini Live...");
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      
+
       const sessionPromise = ai.live.connect({
         model: "gemini-2.0-flash-exp",
         config: {
@@ -152,9 +154,9 @@ export default function App() {
                 {
                   name: "click_element",
                   description: "Simulates a click on a UI element.",
-                  parameters: { 
-                    type: Type.OBJECT, 
-                    properties: { 
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
                       description: { type: Type.STRING },
                       x: { type: Type.NUMBER },
                       y: { type: Type.NUMBER }
@@ -165,9 +167,9 @@ export default function App() {
                 {
                   name: "type_text",
                   description: "Simulates typing into a text field.",
-                  parameters: { 
-                    type: Type.OBJECT, 
-                    properties: { 
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
                       text: { type: Type.STRING },
                       element_description: { type: Type.STRING }
                     },
@@ -177,9 +179,9 @@ export default function App() {
                 {
                   name: "trigger_flight_alert",
                   description: "IMMEDIATELY call this when an international flight destination is detected on screen. This shows a critical popover to the user.",
-                  parameters: { 
-                    type: Type.OBJECT, 
-                    properties: { 
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
                       destination: { type: Type.STRING, description: "The detected destination country or city." }
                     },
                     required: ["destination"]
@@ -217,13 +219,13 @@ export default function App() {
               const text = message.serverContent.modelTurn.parts[0].text;
               setTranscript(prev => [...prev, `Navigator: ${text}`].slice(-5));
             }
-            
+
             // Handle Interruptions
             if (message.serverContent?.interrupted) {
               addDebugLog("AI Interrupted");
               // Stop all current audio playback
               sourcesRef.current.forEach(source => {
-                try { source.stop(); } catch(e) {}
+                try { source.stop(); } catch (e) { }
               });
               sourcesRef.current = [];
               nextStartTimeRef.current = 0;
@@ -233,7 +235,7 @@ export default function App() {
             const toolCall = message.toolCall;
             if (toolCall) {
               const responses: any[] = [];
-              
+
               for (const call of toolCall.functionCalls) {
                 addDebugLog(`Executing Tool: ${call.name} with args: ${JSON.stringify(call.args)}`);
                 let result = "Action executed successfully.";
@@ -313,12 +315,13 @@ export default function App() {
   };
 
   const startStreaming = (session: any, micStream: MediaStream) => {
+    let frameCount = 0;
     const canvas = canvasRef.current;
     const video = videoRef.current;
     if (!canvas || !video || !audioContextRef.current) return;
 
     const ctx = canvas.getContext('2d');
-    
+
     // Video Streaming
     const sendFrame = () => {
       if (!isRecordingRef.current) return;
@@ -347,13 +350,13 @@ export default function App() {
     processor.onaudioprocess = (e) => {
       if (!isRecordingRef.current) return;
       const inputData = e.inputBuffer.getChannelData(0);
-      
+
       // Convert to 16-bit PCM
       const pcmData = new Int16Array(inputData.length);
       for (let i = 0; i < inputData.length; i++) {
         pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
       }
-      
+
       // Convert to Base64 efficiently
       const bytes = new Uint8Array(pcmData.buffer);
       let binary = '';
@@ -374,14 +377,14 @@ export default function App() {
   const playAudio = (base64Data: string) => {
     if (!audioContextRef.current) return;
     const audioContext = audioContextRef.current;
-    
+
     const binaryString = window.atob(base64Data);
     const bytes = new Uint8Array(binaryString.length);
     for (let i = 0; i < binaryString.length; i++) {
       bytes[i] = binaryString.charCodeAt(i);
     }
     const pcmData = new Int16Array(bytes.buffer);
-    
+
     const sampleRate = 24000; // Gemini Live output is 24kHz
     const audioBuffer = audioContext.createBuffer(1, pcmData.length, sampleRate);
     const channelData = audioBuffer.getChannelData(0);
@@ -392,16 +395,16 @@ export default function App() {
     const source = audioContext.createBufferSource();
     source.buffer = audioBuffer;
     source.connect(audioContext.destination);
-    
+
     // Schedule the chunk
     const currentTime = audioContext.currentTime;
     if (nextStartTimeRef.current < currentTime) {
       nextStartTimeRef.current = currentTime + 0.05; // Small buffer
     }
-    
+
     source.start(nextStartTimeRef.current);
     nextStartTimeRef.current += audioBuffer.duration;
-    
+
     // Track source to allow stopping on interruption
     sourcesRef.current.push(source);
     source.onended = () => {
@@ -415,15 +418,14 @@ export default function App() {
       <header className="border-b border-black/10 bg-white/50 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-[#151619] rounded-xl flex items-center justify-center text-white shadow-lg">
-              <Monitor className="w-6 h-6" />
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white">
+              <Logo />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight uppercase">Cygnus</h1>
-              <p className="text-[10px] font-mono uppercase tracking-widest opacity-50">Visual UI Understanding & Interaction</p>
+              <p className="text-[10px] font-sans uppercase tracking-widest opacity-50">Gemimi Live International Travel Assistant</p>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 px-3 py-1.5 bg-black/5 rounded-full border border-black/5">
               <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
@@ -432,7 +434,7 @@ export default function App() {
               </span>
             </div>
             {!isActive ? (
-              <button 
+              <button
                 onClick={startMonitoring}
                 className="px-6 py-2 bg-[#151619] text-white rounded-xl font-medium hover:bg-black transition-all shadow-lg flex items-center gap-2"
               >
@@ -440,7 +442,7 @@ export default function App() {
                 Start Monitoring
               </button>
             ) : (
-              <button 
+              <button
                 onClick={stopMonitoring}
                 className="px-6 py-2 bg-red-500 text-white rounded-xl font-medium hover:bg-red-600 transition-all shadow-lg flex items-center gap-2"
               >
@@ -458,7 +460,7 @@ export default function App() {
             <ShieldAlert className="w-5 h-5 flex-shrink-0" />
             <div className="flex-1 flex items-center justify-between">
               <p className="text-sm font-medium">{error}</p>
-              <button 
+              <button
                 onClick={() => setError(null)}
                 className="text-xs font-bold uppercase tracking-widest hover:underline"
               >
@@ -467,12 +469,12 @@ export default function App() {
             </div>
           </div>
         )}
-        
+
         {/* Left Column: Visual Monitoring */}
         <div className="lg:col-span-8 space-y-6 relative">
           <AnimatePresence>
             {flightAlert && (
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -485,13 +487,13 @@ export default function App() {
                   <div className="flex-1 space-y-2 text-center md:text-left">
                     <h3 className="text-xl font-bold text-[#151619]">International Flight Detected!</h3>
                     <p className="text-sm text-black/70 leading-relaxed">
-                      I noticed you're looking at flights to <span className="font-bold text-red-600">{flightAlert}</span>. 
+                      I noticed you're looking at flights to <span className="font-bold text-red-600">{flightAlert}</span>.
                       Did you know 40% of travel cancellations are caused by passport validity issues?
                     </p>
                     <p className="text-sm font-medium">Would you like me to check the specific entry requirements for you?</p>
                   </div>
                   <div className="flex gap-3 w-full md:w-auto">
-                    <button 
+                    <button
                       onClick={() => {
                         window.open('https://travel.state.gov/en/international-travel.html', '_blank');
                         if (sessionRef.current) {
@@ -504,7 +506,7 @@ export default function App() {
                     >
                       Yes, Check Now
                     </button>
-                    <button 
+                    <button
                       onClick={() => {
                         triggerTutorial();
                       }}
@@ -513,7 +515,7 @@ export default function App() {
                       <Globe className="w-4 h-4" />
                       Watch Tutorial
                     </button>
-                    <button 
+                    <button
                       onClick={() => {
                         setFlightAlert(null);
                         setStatus('monitoring');
@@ -530,21 +532,21 @@ export default function App() {
 
           <section className="bg-[#151619] rounded-3xl overflow-hidden shadow-2xl aspect-video relative group">
             <div className="w-full h-full relative">
-              <video 
-                ref={videoRef} 
-                autoPlay 
-                muted 
+              <video
+                ref={videoRef}
+                autoPlay
+                muted
                 className="w-full h-full object-cover opacity-80"
               />
               <canvas ref={canvasRef} width={480} height={270} className="hidden" />
-              
+
               {/* Virtual Cursor */}
               <AnimatePresence>
                 {showCursor && (
                   <motion.div
                     initial={{ opacity: 0, scale: 0.5 }}
-                    animate={{ 
-                      opacity: 1, 
+                    animate={{
+                      opacity: 1,
                       scale: 1,
                       left: `${cursorPos.x}%`,
                       top: `${cursorPos.y}%`
@@ -556,7 +558,7 @@ export default function App() {
                   >
                     <div className="relative">
                       <MousePointer2 className="w-8 h-8 text-white fill-[#151619] drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]" />
-                      <motion.div 
+                      <motion.div
                         animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
                         transition={{ repeat: Infinity, duration: 1 }}
                         className="absolute inset-0 bg-white/30 rounded-full -z-10"
@@ -566,7 +568,7 @@ export default function App() {
                 )}
               </AnimatePresence>
             </div>
-            
+
             {/* Overlay UI */}
             <div className="absolute inset-0 p-6 flex flex-col justify-between pointer-events-none">
               <div className="flex justify-between items-start">
@@ -602,7 +604,7 @@ export default function App() {
                       <span className="text-[10px] font-mono text-white uppercase">Analyzing Patterns...</span>
                     </div>
                     <div className="h-1 w-48 bg-white/10 rounded-full overflow-hidden">
-                      <motion.div 
+                      <motion.div
                         className="h-full bg-emerald-500"
                         animate={{ width: ['0%', '100%'] }}
                         transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
@@ -625,7 +627,7 @@ export default function App() {
                 <p className="text-sm text-black/30 italic">Navigator is observing your screen and waiting for your intent...</p>
               ) : (
                 transcript.map((line, i) => (
-                  <motion.div 
+                  <motion.div
                     key={i}
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -651,13 +653,13 @@ export default function App() {
               <p className="text-[10px] text-black/40 leading-tight mb-2">
                 Cygnus monitors automatically, but you can also type specific requests here.
               </p>
-              <textarea 
+              <textarea
                 value={userIntent}
                 onChange={(e) => setUserIntent(e.target.value)}
                 placeholder="What should I do for you? (e.g., 'Find the login button')"
                 className="w-full p-4 bg-black/5 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-black/10 min-h-[100px] resize-none"
               />
-              <button 
+              <button
                 onClick={() => {
                   if (sessionRef.current && userIntent) {
                     sessionRef.current.sendRealtimeInput({ text: `User Intent: ${userIntent}` });
@@ -733,13 +735,13 @@ export default function App() {
       {/* Tutorial Modal */}
       <AnimatePresence>
         {showTutorial && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8 bg-black/80 backdrop-blur-sm"
           >
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
@@ -755,21 +757,21 @@ export default function App() {
                     <p className="text-xs text-black/40 font-mono uppercase">Screen Recording Guide</p>
                   </div>
                 </div>
-                <button 
+                <button
                   onClick={() => setShowTutorial(false)}
                   className="w-10 h-10 rounded-full hover:bg-black/5 flex items-center justify-center transition-colors"
                 >
                   <ChevronRight className="w-6 h-6 rotate-90" />
                 </button>
               </div>
-              
+
               <div className="aspect-video bg-black relative group">
                 {/* Placeholder Video - User should replace this with their actual recording */}
-                <video 
-                  controls 
+                <video
+                  controls
                   autoPlay
                   className="w-full h-full"
-                  src="https://www.w3schools.com/html/mov_bbb.mp4" 
+                  src="https://www.w3schools.com/html/mov_bbb.mp4"
                 />
                 <div className="absolute inset-0 pointer-events-none border-4 border-emerald-500/20 m-4 rounded-xl" />
               </div>
@@ -780,7 +782,7 @@ export default function App() {
                   <p className="text-xs text-emerald-700/70">This guide shows you exactly where to look on travel.state.gov</p>
                 </div>
                 <div className="flex gap-3 w-full md:w-auto">
-                  <button 
+                  <button
                     onClick={() => {
                       window.open('https://travel.state.gov/en/international-travel.html', '_blank');
                       setShowTutorial(false);
@@ -790,7 +792,7 @@ export default function App() {
                     <ExternalLink className="w-4 h-4" />
                     Open State Dept Site
                   </button>
-                  <button 
+                  <button
                     onClick={() => setShowTutorial(false)}
                     className="flex-1 md:flex-none px-8 py-3 bg-white text-[#151619] border border-black/10 rounded-xl font-medium hover:bg-black/5 transition-all"
                   >
