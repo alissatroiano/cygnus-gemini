@@ -138,7 +138,7 @@ export default function App() {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       
       const sessionPromise = ai.live.connect({
-        model: "gemini-2.5-flash-native-audio-preview-09-2025",
+        model: "gemini-2.0-flash-exp",
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
@@ -325,8 +325,12 @@ export default function App() {
       if (ctx && video.readyState === video.HAVE_ENOUGH_DATA) {
         // Use a smaller internal canvas for streaming to reduce data size
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const base64Data = canvas.toDataURL('image/jpeg', 0.2).split(',')[1];
+        const base64Data = canvas.toDataURL('image/jpeg', 0.4).split(',')[1];
         session.sendRealtimeInput({ media: { data: base64Data, mimeType: 'image/jpeg' } });
+        frameCount++;
+        if (frameCount % 10 === 0) {
+          addDebugLog(`Sent ${frameCount} frames...`);
+        }
       }
       setTimeout(sendFrame, 1000); // 1fps is enough for UI navigation
     };
@@ -357,7 +361,13 @@ export default function App() {
         binary += String.fromCharCode(bytes[i]);
       }
       const base64Audio = btoa(binary);
-      session.sendRealtimeInput({ media: { data: base64Audio, mimeType: 'audio/pcm;rate=16000' } });
+      try {
+        if (isRecordingRef.current) {
+          session.sendRealtimeInput({ media: { data: base64Audio, mimeType: 'audio/pcm;rate=16000' } });
+        }
+      } catch (e) {
+        // Silent catch for audio during closure
+      }
     };
   };
 

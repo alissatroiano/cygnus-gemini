@@ -1,0 +1,29 @@
+steps:
+  # 1. Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/cygnus-frontend', '.']
+
+  # 2. Push the image to Artifact Registry (using GCR for simplicity here, or update to AR)
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/cygnus-frontend']
+
+  # 3. Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'cygnus-frontend'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/cygnus-frontend'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+
+images:
+  - 'gcr.io/$PROJECT_ID/cygnus-frontend'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
